@@ -2,81 +2,65 @@
 
 Simple HTTP / HTTPS / SSL / TLS website checker written in PHP.
 
-A lightweight web-based tool to quickly check website availability, connectivity, and SSL certificate health.
+A lightweight web-based utility to quickly check website availability, connectivity, redirects, HTTP headers, TLS details, and SSL certificate health.
+
+## Version
+
+Current version:
+
+v1.2.0
 
 ## Features
 
-- HTTP connectivity check (port 80)
-- HTTPS connectivity check (port 443)
+### Connectivity
+
+- HTTP port 80 connectivity check
+- HTTPS port 443 connectivity check
+- response time measurement
+- DNS hostname resolution
+- public IP lookup
+
+### HTTP / HTTPS
+
 - HTTP status code detection
 - HTTPS status code detection
-- DNS hostname resolution
-- Public IP lookup
+- redirect location detection
+- HTTP response header inspection
+- HTTPS response header inspection
+
+### SSL / TLS
+
 - SSL certificate inspection
-- Certificate issuer information
-- Certificate validity dates
-- Expiration warning (days remaining)
+- certificate subject
+- certificate issuer
+- validity start date
+- validity end date
+- days remaining
+- expiration warning
+- SSL health badge
+- TLS protocol detection
+- TLS cipher detection
+- cipher strength
+- certificate serial
+- SAN (Subject Alternative Names)
+
+### API / UI
+
+- clean dark responsive web UI
 - JSON API endpoint
-- Clean dark web UI
-- Input normalization
+- copy JSON button
+- raw JSON viewer
+- version display
+- modular code structure
 
 ## Supported Input
 
 Examples:
 
+```text
 example.com
 webtrash.ch
 google.com
 https://github.com
 https://example.com/login
 https://subdomain.example.com:443/path
-
-The checker automatically extracts and normalizes the hostname.
-
-## Example URLs
-
-Web UI:
-
-https://yourdomain.com/checker/index.php
-
-Check a target:
-
-https://yourdomain.com/checker/index.php?host=webtrash.ch
-
-JSON API:
-
-https://yourdomain.com/checker/index.php?host=webtrash.ch&format=json
-
-## Example JSON Response
-
-```json
-{
-  "input": "webtrash.ch",
-  "host": "webtrash.ch",
-  "checked_at": "2026-05-12T18:00:00+00:00",
-  "ips": [
-    "104.21.55.123"
-  ],
-  "http": {
-    "open": true,
-    "response_ms": 42
-  },
-  "https": {
-    "open": true,
-    "response_ms": 51
-  },
-  "http_status": {
-    "status_code": 301
-  },
-  "https_status": {
-    "status_code": 200
-  },
-  "ssl": {
-    "subject": "webtrash.ch",
-    "issuer": "Let's Encrypt",
-    "valid_from": "2026-04-01 00:00:00",
-    "valid_to": "2026-06-30 23:59:59",
-    "days_left": 49,
-    "expired": false
-  }
-}
