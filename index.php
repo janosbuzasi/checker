@@ -2,18 +2,26 @@
 declare(strict_types=1);
 
 /*
- * Checker
+ * Checker v1.1.0
  * Simple HTTP / HTTPS / SSL / TLS website checker
  *
- * Web UI:
- *   /checker/index.php
+ * Changelog:
+ * v1.1.0
+ * - Added app versioning
+ * - Added redirect Location detection
+ * - Added SSL health status badge
+ * - Added TLS protocol/cipher detection
+ * - Added HTTP/HTTPS response headers
+ * - Added collapsible Raw JSON
+ * - Added Copy JSON button
+ * - Added Open JSON API button
  *
- * Check:
- *   /checker/index.php?host=example.com
- *
- * JSON API:
- *   /checker/index.php?host=example.com&format=json
+ * v1.0.0
+ * - Initial release
  */
+
+const APP_NAME = 'checker';
+const APP_VERSION = '1.1.0';
 
 function normalize_host(string $input): string
 {
@@ -33,10 +41,7 @@ function normalize_host(string $input): string
         return '';
     }
 
-    $host = strtolower($parts['host']);
-    $host = rtrim($host, '.');
-
-    return $host;
+    return rtrim(strtolower($parts['host']), '.');
 }
 
 function is_private_or_reserved_ip(string $ip): bool
@@ -46,30 +51,6 @@ function is_private_or_reserved_ip(string $ip): bool
         FILTER_VALIDATE_IP,
         FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
     );
-}
-
-function resolve_public_ips(string $host): array
-{
-    $records = @dns_get_record($host, DNS_A + DNS_AAAA);
-    $ips = [];
-
-    if (!$records) {
-        return [];
-    }
-
-    foreach ($records as $record) {
-        $ip = $record['ip'] ?? $record['ipv6'] ?? null;
-
-        if (
-            $ip &&
-            filter_var($ip, FILTER_VALIDATE_IP) &&
-            !is_private_or_reserved_ip($ip)
-        ) {
-            $ips[] = $ip;
-        }
-    }
-
-    return array_values(array_unique($ips));
 }
 
 function is_valid_hostname(string $host): bool
@@ -86,6 +67,26 @@ function is_valid_hostname(string $host): bool
         '/^(?=.{1,253}$)(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/i',
         $host
     );
+}
+
+function resolve_public_ips(string $host): array
+{
+    $records = @dns_get_record($host, DNS_A + DNS_AAAA);
+    $ips = [];
+
+    if (!$records) {
+        return [];
+    }
+
+    foreach ($records as $record) {
+        $ip = $record['ip'] ?? $record['ipv6'] ?? null;
+
+        if ($ip && filter_var($ip, FILTER_VALIDATE_IP) && !is_private_or_reserved_ip($ip)) {
+            $ips[] = $ip;
+        }
+    }
+
+    return array_values(array_unique($ips));
 }
 
 function check_port(string $host, int $port, int $timeout = 5): array
@@ -111,6 +112,21 @@ function check_port(string $host, int $port, int $timeout = 5): array
     ];
 }
 
+function normalize_headers(array $headers): array
+{
+    $result = [];
+
+    foreach ($headers as $key => $value) {
+        if (is_int($key)) {
+            continue;
+        }
+
+        $result[$key] = is_array($value) ? implode(', ', $value) : (string) $value;
+    }
+
+    return $result;
+}
+
 function get_http_status(string $url): array
 {
     $context = stream_context_create([
@@ -118,7 +134,9 @@ function get_http_status(string $url): array
             'method' => 'HEAD',
             'timeout' => 8,
             'ignore_errors' => true,
-            'user_agent' => 'checker/1.0',
+            'follow_location' => 0,
+            'max_redirects' => 0,
+            'user_agent' => 'checker/' . APP_VERSION,
         ],
         'ssl' => [
             'verify_peer' => true,
@@ -133,17 +151,20 @@ function get_http_status(string $url): array
             'ok' => false,
             'status_line' => null,
             'status_code' => null,
+            'location' => null,
+            'headers' => [],
         ];
     }
 
     $statusLine = is_array($headers[0]) ? end($headers[0]) : $headers[0];
-
     preg_match('/\s(\d{3})\s/', (string) $statusLine, $match);
 
     return [
         'ok' => true,
         'status_line' => $statusLine,
         'status_code' => isset($match[1]) ? (int) $match[1] : null,
+        'location' => $headers['Location'] ?? $headers['location'] ?? null,
+        'headers' => normalize_headers($headers),
     ];
 }
 
@@ -175,6 +196,7 @@ function get_ssl_info(string $host): array
         ];
     }
 
+    $meta = stream_get_meta_data($client);
     $params = stream_context_get_params($client);
     fclose($client);
 
@@ -200,8 +222,21 @@ function get_ssl_info(string $host): array
     $validFrom = $cert['validFrom_time_t'] ?? 0;
     $daysLeft = $validTo ? (int) floor(($validTo - time()) / 86400) : null;
 
+    $health = 'unknown';
+
+    if ($daysLeft !== null) {
+        if ($daysLeft < 0) {
+            $health = 'expired';
+        } elseif ($daysLeft < 14) {
+            $health = 'warning';
+        } else {
+            $health = 'healthy';
+        }
+    }
+
     return [
         'valid_connection' => true,
+        'health' => $health,
         'subject' => $cert['subject']['CN'] ?? null,
         'issuer' => $cert['issuer']['CN'] ?? null,
         'valid_from' => $validFrom ? date('Y-m-d H:i:s', $validFrom) : null,
@@ -211,6 +246,9 @@ function get_ssl_info(string $host): array
         'san' => $cert['extensions']['subjectAltName'] ?? null,
         'serial' => $cert['serialNumberHex'] ?? null,
         'signature_type' => $cert['signatureTypeSN'] ?? null,
+        'tls_protocol' => $meta['crypto']['protocol'] ?? null,
+        'tls_cipher' => $meta['crypto']['cipher_name'] ?? null,
+        'tls_cipher_bits' => $meta['crypto']['cipher_bits'] ?? null,
     ];
 }
 
@@ -226,12 +264,23 @@ function badge(bool $ok): string
         : '<span class="badge bad">FAIL</span>';
 }
 
+function ssl_health_badge(?string $health): string
+{
+    return match ($health) {
+        'healthy' => '<span class="badge ok">HEALTHY</span>',
+        'warning' => '<span class="badge warn">EXPIRING SOON</span>',
+        'expired' => '<span class="badge bad">EXPIRED</span>',
+        default => '<span class="badge warn">UNKNOWN</span>',
+    };
+}
+
 $input = $_GET['host'] ?? '';
 $format = $_GET['format'] ?? 'html';
 $host = normalize_host((string) $input);
 
 $result = [
-    'app' => 'checker',
+    'app' => APP_NAME,
+    'version' => APP_VERSION,
     'input' => $input,
     'host' => $host,
     'checked_at' => date('c'),
@@ -257,9 +306,11 @@ if ($host !== '') {
     }
 }
 
+$jsonOutput = json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+
 if ($format === 'json') {
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    echo $jsonOutput;
     exit;
 }
 
@@ -268,7 +319,7 @@ if ($format === 'json') {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Checker - HTTP HTTPS SSL TLS</title>
+<title>Checker v<?= e(APP_VERSION) ?> - HTTP HTTPS SSL TLS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 :root {
@@ -313,9 +364,24 @@ h1 {
     font-size: 2.1rem;
 }
 
+h2 {
+    margin-top: 0;
+}
+
 .subtitle {
     margin: 0;
     color: var(--muted);
+}
+
+.version {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 5px 10px;
+    border: 1px solid #2d4f84;
+    background: rgba(56, 189, 248, 0.08);
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 0.85rem;
 }
 
 .card {
@@ -358,6 +424,20 @@ button,
     cursor: pointer;
     text-decoration: none;
     display: inline-block;
+}
+
+.button.secondary,
+button.secondary {
+    background: #1f2937;
+    color: var(--text);
+    border: 1px solid #2d4f84;
+}
+
+.actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 12px;
 }
 
 .grid {
@@ -428,11 +508,29 @@ a {
     font-size: 0.92rem;
 }
 
+details {
+    margin-top: 12px;
+}
+
+summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+
 .footer {
     color: var(--muted);
     font-size: 0.85rem;
     text-align: center;
     margin-top: 24px;
+}
+
+.copy-status {
+    color: var(--ok);
+    font-size: 0.9rem;
+    margin-top: 8px;
+    display: none;
 }
 
 @media (max-width: 720px) {
@@ -447,6 +545,11 @@ a {
         width: 100%;
         text-align: center;
     }
+
+    .actions {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
 }
 </style>
 </head>
@@ -456,6 +559,7 @@ a {
     <div class="header">
         <h1>Checker</h1>
         <p class="subtitle">HTTP / HTTPS / SSL / TLS website checker</p>
+        <span class="version">v<?= e(APP_VERSION) ?></span>
     </div>
 
     <div class="card">
@@ -480,12 +584,13 @@ a {
         </p>
 
         <?php if ($host): ?>
-            <p class="small">
-                JSON API:
-                <a href="?host=<?= urlencode($host) ?>&format=json">
-                    ?host=<?= e($host) ?>&amp;format=json
+            <div class="actions">
+                <a class="button secondary" href="?host=<?= urlencode($host) ?>&format=json" target="_blank">
+                    Open JSON API
                 </a>
-            </p>
+                <button class="secondary" type="button" onclick="copyJson()">Copy JSON</button>
+            </div>
+            <div id="copyStatus" class="copy-status">JSON copied.</div>
         <?php endif; ?>
     </div>
 
@@ -520,6 +625,7 @@ a {
                         <?= e($result['http']['response_ms']) ?> ms
                     </div>
                 </div>
+
                 <div class="item">
                     <div class="label">HTTPS Port 443</div>
                     <div class="value">
@@ -527,19 +633,43 @@ a {
                         <?= e($result['https']['response_ms']) ?> ms
                     </div>
                 </div>
+
                 <div class="item">
                     <div class="label">HTTP Status</div>
                     <div class="value">
                         <?= e($result['http_status']['status_line'] ?? 'No response') ?>
                     </div>
+                    <?php if (!empty($result['http_status']['location'])): ?>
+                        <div class="small">
+                            Redirect Location:<br>
+                            <code><?= e($result['http_status']['location']) ?></code>
+                        </div>
+                    <?php endif; ?>
                 </div>
+
                 <div class="item">
                     <div class="label">HTTPS Status</div>
                     <div class="value">
                         <?= e($result['https_status']['status_line'] ?? 'No response') ?>
                     </div>
+                    <?php if (!empty($result['https_status']['location'])): ?>
+                        <div class="small">
+                            Redirect Location:<br>
+                            <code><?= e($result['https_status']['location']) ?></code>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
+
+            <details>
+                <summary>Show HTTP Headers</summary>
+                <pre><?= e(json_encode($result['http_status']['headers'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) ?></pre>
+            </details>
+
+            <details>
+                <summary>Show HTTPS Headers</summary>
+                <pre><?= e(json_encode($result['https_status']['headers'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) ?></pre>
+            </details>
         </div>
 
         <div class="card">
@@ -551,6 +681,10 @@ a {
                 <p class="bad"><?= e($result['ssl']['error']) ?></p>
             <?php else: ?>
                 <div class="grid">
+                    <div class="item">
+                        <div class="label">Health</div>
+                        <div class="value"><?= ssl_health_badge($result['ssl']['health'] ?? null) ?></div>
+                    </div>
                     <div class="item">
                         <div class="label">Subject</div>
                         <div class="value"><?= e($result['ssl']['subject'] ?? '-') ?></div>
@@ -580,27 +714,65 @@ a {
                         </div>
                     </div>
                     <div class="item">
+                        <div class="label">TLS Protocol</div>
+                        <div class="value"><?= e($result['ssl']['tls_protocol'] ?? '-') ?></div>
+                    </div>
+                    <div class="item">
+                        <div class="label">TLS Cipher</div>
+                        <div class="value"><?= e($result['ssl']['tls_cipher'] ?? '-') ?></div>
+                    </div>
+                    <div class="item">
+                        <div class="label">Cipher Bits</div>
+                        <div class="value"><?= e($result['ssl']['tls_cipher_bits'] ?? '-') ?></div>
+                    </div>
+                    <div class="item">
                         <div class="label">Signature</div>
                         <div class="value"><?= e($result['ssl']['signature_type'] ?? '-') ?></div>
                     </div>
                 </div>
 
-                <p class="small">Subject Alternative Names</p>
-                <pre><?= e($result['ssl']['san'] ?? '-') ?></pre>
+                <details>
+                    <summary>Show Subject Alternative Names</summary>
+                    <pre><?= e($result['ssl']['san'] ?? '-') ?></pre>
+                </details>
+
+                <details>
+                    <summary>Show Certificate Serial</summary>
+                    <pre><?= e($result['ssl']['serial'] ?? '-') ?></pre>
+                </details>
             <?php endif; ?>
         </div>
 
         <div class="card">
             <h2>Raw JSON</h2>
-            <pre><?= e(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) ?></pre>
+            <details>
+                <summary>Show Raw JSON</summary>
+                <pre id="jsonOutput"><?= e($jsonOutput) ?></pre>
+            </details>
         </div>
 
     <?php endif; ?>
 
     <div class="footer">
-        checker · no shell execution · public hosts only
+        checker v<?= e(APP_VERSION) ?> · no shell execution · public hosts only
     </div>
 
 </div>
+
+<script>
+const jsonData = <?= json_encode($jsonOutput, JSON_UNESCAPED_SLASHES) ?>;
+
+function copyJson() {
+    navigator.clipboard.writeText(jsonData).then(() => {
+        const el = document.getElementById('copyStatus');
+        if (el) {
+            el.style.display = 'block';
+            setTimeout(() => {
+                el.style.display = 'none';
+            }, 1800);
+        }
+    });
+}
+</script>
 </body>
 </html>
