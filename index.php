@@ -50,10 +50,20 @@ if ($format === 'json') {
 <meta charset="utf-8">
 <title><?= e(APP_TITLE) ?> v<?= e(APP_VERSION) ?></title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/favicon/favicon.svg">
 <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
-<div class="container">
+<nav class="site-nav">
+    <div class="nav-container">
+        <a class="site-brand" href="/">
+            <span class="brand-mark" aria-hidden="true">WT</span>
+            <span>webtrash.ch</span>
+        </a>
+        <span class="app-name"><?= e(APP_TITLE) ?></span>
+    </div>
+</nav>
+<main class="container">
 
     <div class="header">
         <h1><?= e(APP_TITLE) ?></h1>
@@ -284,7 +294,7 @@ if ($format === 'json') {
         <?= e(FOOTER_TEXT) ?>
     </div>
 
-</div>
+</main>
 
 <script src="assets/js/script.js"></script>
 </body>
