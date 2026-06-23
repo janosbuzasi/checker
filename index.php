@@ -54,15 +54,38 @@ if ($format === 'json') {
 <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
-<nav class="site-nav">
-    <div class="nav-container">
+<header class="site-header">
+    <div class="header-container">
         <a class="site-brand" href="/">
             <span class="brand-mark" aria-hidden="true">WT</span>
             <span>webtrash.ch</span>
         </a>
         <span class="app-name"><?= e(APP_TITLE) ?></span>
+        <button class="menu-toggle" type="button" aria-controls="main-menu" aria-expanded="false">
+            <span class="menu-icon" aria-hidden="true"></span>
+            <span class="sr-only">Menu open</span>
+        </button>
     </div>
-</nav>
+    <nav id="main-menu" class="main-menu" aria-label="Main navigation">
+        <ul>
+            <li><a href="/">Home</a></li>
+            <li class="menu-group">
+                <button class="submenu-toggle" type="button" aria-expanded="false">
+                    <span>Tools</span><span class="submenu-chevron" aria-hidden="true"></span>
+                </button>
+                <ul class="submenu">
+                    <li><a href="/checker/">Website Checker</a></li>
+                    <li><a href="/essensplan/">Essensplan</a></li>
+                    <li><a href="/password/">Passwort-Generator</a></li>
+                    <li><a href="/swiss-business-checker/">Swiss Business Checker</a></li>
+                    <li><a href="/cve-watch-demo/">CVE Watch Demo</a></li>
+                </ul>
+            </li>
+            <li><a href="/about_us.php">About us</a></li>
+            <li><a href="/contact.php">Contact</a></li>
+        </ul>
+    </nav>
+</header>
 <main class="container">
 
     <div class="header">
