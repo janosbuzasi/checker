@@ -79,6 +79,7 @@ if ($format === 'json') {
                     <li><a href="/password/">Passwort-Generator</a></li>
                     <li><a href="/swiss-business-checker/">Swiss Business Checker</a></li>
                     <li><a href="/cve-watch-demo/">CVE Watch Demo</a></li>
+                    <li><a href="/tracks/">Tracks</a></li>
                 </ul>
             </li>
             <li><a href="/about_us.php">About us</a></li>
