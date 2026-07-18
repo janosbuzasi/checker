@@ -81,6 +81,7 @@ if ($format === 'json') {
                     <li><a href="/cnc/">Mini CNC Studio</a></li>
                     <li><a href="/tracks/">Tracks</a></li>
                     <li><a href="/bitcoin-dashboard/">Bitcoin Dashboard</a></li>
+                    <li><a href="/music/">JanYmed Music</a></li>
                 </ul>
             </li>
             <li><a href="/about_us.php">About us</a></li>
