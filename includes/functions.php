@@ -13,6 +13,12 @@ function normalize_host(string $input): string
         return '';
     }
 
+    $unbracketedInput = trim($input, '[]');
+
+    if (filter_var($unbracketedInput, FILTER_VALIDATE_IP)) {
+        return strtolower($unbracketedInput);
+    }
+
     if (!preg_match('#^https?://#i', $input)) {
         $input = 'https://' . $input;
     }
@@ -23,7 +29,7 @@ function normalize_host(string $input): string
         return '';
     }
 
-    return rtrim(strtolower($parts['host']), '.');
+    return rtrim(strtolower(trim($parts['host'], '[]')), '.');
 }
 
 function is_private_or_reserved_ip(string $ip): bool
@@ -53,6 +59,14 @@ function is_valid_hostname(string $host): bool
 
 function resolve_public_ips(string $host): array
 {
+    if (filter_var($host, FILTER_VALIDATE_IP)) {
+        if (!ALLOW_PRIVATE_IP_TARGETS && is_private_or_reserved_ip($host)) {
+            return [];
+        }
+
+        return [$host];
+    }
+
     $records = @dns_get_record($host, DNS_A + DNS_AAAA);
     $ips = [];
 
@@ -77,10 +91,20 @@ function resolve_public_ips(string $host): array
     return array_values(array_unique($ips));
 }
 
+function format_url_host(string $host): string
+{
+    return filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)
+        ? "[{$host}]"
+        : $host;
+}
+
 function check_port(string $host, int $port, int $timeout = CONNECT_TIMEOUT): array
 {
     $start = microtime(true);
-    $connection = @fsockopen($host, $port, $errno, $errstr, $timeout);
+    $socketHost = filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)
+        ? "tcp://[{$host}]"
+        : $host;
+    $connection = @fsockopen($socketHost, $port, $errno, $errstr, $timeout);
     $responseMs = round((microtime(true) - $start) * 1000);
 
     if ($connection) {
@@ -98,6 +122,202 @@ function check_port(string $host, int $port, int $timeout = CONNECT_TIMEOUT): ar
         'response_ms' => $responseMs,
         'error' => $errstr ?: 'Connection failed',
     ];
+}
+
+function get_reverse_dns(string $ip): ?string
+{
+    if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+        return null;
+    }
+
+    $hostname = @gethostbyaddr($ip);
+
+    if (!$hostname || $hostname === $ip) {
+        return null;
+    }
+
+    return rtrim(strtolower($hostname), '.');
+}
+
+function find_rdap_entity(array $entities, array $wantedRoles): ?array
+{
+    foreach ($entities as $entity) {
+        $roles = $entity['roles'] ?? [];
+
+        if (array_intersect($wantedRoles, $roles)) {
+            return $entity;
+        }
+
+        $nested = find_rdap_entity($entity['entities'] ?? [], $wantedRoles);
+
+        if ($nested) {
+            return $nested;
+        }
+    }
+
+    return null;
+}
+
+function rdap_vcard_value(?array $entity, string $property): ?string
+{
+    $properties = $entity['vcardArray'][1] ?? [];
+
+    foreach ($properties as $entry) {
+        if (($entry[0] ?? null) !== $property) {
+            continue;
+        }
+
+        $value = $entry[3] ?? null;
+
+        if (is_array($value)) {
+            $value = implode(', ', array_filter($value, 'is_string'));
+        }
+
+        return is_scalar($value) ? (string) $value : null;
+    }
+
+    return null;
+}
+
+function get_ip_asn(string $ip): array
+{
+    $query = null;
+
+    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        $query = implode('.', array_reverse(explode('.', $ip))) . '.origin.asn.cymru.com';
+    } elseif (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+        $packed = inet_pton($ip);
+
+        if ($packed !== false) {
+            $hex = bin2hex($packed);
+            $query = implode('.', array_reverse(str_split($hex))) . '.origin6.asn.cymru.com';
+        }
+    }
+
+    if ($query === null) {
+        return [];
+    }
+
+    $records = @dns_get_record($query, DNS_TXT);
+    $text = $records[0]['txt'] ?? null;
+
+    if (!$text) {
+        return [];
+    }
+
+    $parts = array_map('trim', explode('|', $text));
+
+    return [
+        'asn' => isset($parts[0]) ? 'AS' . ltrim($parts[0], 'ASas') : null,
+        'announced_prefix' => $parts[1] ?? null,
+        'asn_country' => $parts[2] ?? null,
+        'registry' => $parts[3] ?? null,
+        'allocated_at' => $parts[4] ?? null,
+    ];
+}
+
+function fetch_json_url(string $url, int $timeout): ?array
+{
+    $body = false;
+
+    if (filter_var(ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOL)) {
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'timeout' => $timeout,
+                'ignore_errors' => true,
+                'follow_location' => 1,
+                'max_redirects' => 5,
+                'user_agent' => USER_AGENT,
+                'header' => "Accept: application/rdap+json, application/json\r\n",
+            ],
+            'ssl' => [
+                'verify_peer' => true,
+                'verify_peer_name' => true,
+            ],
+        ]);
+        $body = @file_get_contents($url, false, $context);
+    }
+
+    if ($body === false && function_exists('curl_init')) {
+        $curl = curl_init($url);
+
+        if ($curl !== false) {
+            curl_setopt_array($curl, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 5,
+                CURLOPT_CONNECTTIMEOUT => $timeout,
+                CURLOPT_TIMEOUT => $timeout,
+                CURLOPT_USERAGENT => USER_AGENT,
+                CURLOPT_HTTPHEADER => ['Accept: application/rdap+json, application/json'],
+            ]);
+            $body = curl_exec($curl);
+            curl_close($curl);
+        }
+    }
+
+    if (!is_string($body)) {
+        return null;
+    }
+
+    $data = json_decode($body, true);
+
+    return is_array($data) ? $data : null;
+}
+
+function get_ip_registration(string $ip): array
+{
+    if (!filter_var($ip, FILTER_VALIDATE_IP) || is_private_or_reserved_ip($ip)) {
+        return [
+            'available' => false,
+            'error' => 'RDAP is only available for public IP addresses',
+        ];
+    }
+
+    $data = fetch_json_url(RDAP_BASE_URL . rawurlencode($ip), RDAP_TIMEOUT);
+
+    if ($data === null) {
+        return [
+            'available' => false,
+            'error' => 'RDAP request failed',
+        ];
+    }
+
+    if (isset($data['errorCode'])) {
+        return [
+            'available' => false,
+            'error' => $data['title'] ?? 'Invalid RDAP response',
+        ];
+    }
+
+    $registrant = find_rdap_entity($data['entities'] ?? [], ['registrant']);
+    $abuse = find_rdap_entity($data['entities'] ?? [], ['abuse']);
+    $cidr = [];
+
+    foreach ($data['cidr0_cidrs'] ?? [] as $block) {
+        $prefix = $block['v4prefix'] ?? $block['v6prefix'] ?? null;
+
+        if ($prefix !== null && isset($block['length'])) {
+            $cidr[] = $prefix . '/' . $block['length'];
+        }
+    }
+
+    return array_merge([
+        'available' => true,
+        'name' => $data['name'] ?? null,
+        'handle' => $data['handle'] ?? null,
+        'type' => $data['type'] ?? null,
+        'country' => $data['country'] ?? null,
+        'start_address' => $data['startAddress'] ?? null,
+        'end_address' => $data['endAddress'] ?? null,
+        'cidr' => $cidr,
+        'parent_handle' => $data['parentHandle'] ?? null,
+        'port43' => $data['port43'] ?? null,
+        'registrant' => rdap_vcard_value($registrant, 'fn'),
+        'abuse_name' => rdap_vcard_value($abuse, 'fn'),
+        'abuse_email' => rdap_vcard_value($abuse, 'email'),
+    ], get_ip_asn($ip));
 }
 
 function normalize_headers(array $headers): array
@@ -158,6 +378,7 @@ function get_http_status(string $url): array
 
 function get_ssl_info(string $host): array
 {
+    $socketHost = format_url_host($host);
     $context = stream_context_create([
         'ssl' => [
             'capture_peer_cert' => true,
@@ -169,7 +390,7 @@ function get_ssl_info(string $host): array
     ]);
 
     $client = @stream_socket_client(
-        "ssl://{$host}:443",
+        "ssl://{$socketHost}:443",
         $errno,
         $errstr,
         TLS_TIMEOUT,

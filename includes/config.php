@@ -6,7 +6,7 @@ declare(strict_types=1);
  */
 
 const APP_NAME = 'checker';
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 const APP_TITLE = 'Checker';
 const APP_SUBTITLE = 'HTTP / HTTPS / SSL / TLS website checker';
@@ -14,6 +14,8 @@ const APP_SUBTITLE = 'HTTP / HTTPS / SSL / TLS website checker';
 const CONNECT_TIMEOUT = 5;
 const HTTP_TIMEOUT = 8;
 const TLS_TIMEOUT = 10;
+const RDAP_TIMEOUT = 8;
+const RDAP_BASE_URL = 'https://rdap.org/ip/';
 
 const SSL_WARNING_DAYS = 14;
 
@@ -26,6 +28,6 @@ const ENABLE_RAW_JSON = true;
 const ENABLE_COPY_JSON = true;
 const ENABLE_TLS_DETAILS = true;
 
-const DEFAULT_PLACEHOLDER = 'webtrash.ch';
+const DEFAULT_PLACEHOLDER = 'webtrash.ch or 8.8.8.8';
 
 const FOOTER_TEXT = APP_NAME . ' v' . APP_VERSION . ' · no shell execution · public hosts only';

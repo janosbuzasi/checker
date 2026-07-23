@@ -26,11 +26,20 @@ if ($host !== '') {
         if (!$ips) {
             $result['error'] = 'Host does not resolve to a public IP';
         } else {
+            $urlHost = format_url_host($host);
             $result['ips'] = $ips;
+            $result['target_type'] = filter_var($host, FILTER_VALIDATE_IP) ? 'ip' : 'hostname';
+            $result['reverse_dns'] = [];
+
+            foreach ($ips as $ip) {
+                $result['reverse_dns'][$ip] = get_reverse_dns($ip);
+            }
+
+            $result['ip_registration'] = get_ip_registration($ips[0]);
             $result['http'] = check_port($host, 80);
             $result['https'] = check_port($host, 443);
-            $result['http_status'] = get_http_status("http://{$host}/");
-            $result['https_status'] = get_http_status("https://{$host}/");
+            $result['http_status'] = get_http_status("http://{$urlHost}/");
+            $result['https_status'] = get_http_status("https://{$urlHost}/");
             $result['ssl'] = $result['https']['open'] ? get_ssl_info($host) : null;
         }
     }
@@ -114,6 +123,8 @@ if ($format === 'json') {
         <p class="small">
             Examples:
             <code>webtrash.ch</code>,
+            <code>8.8.8.8</code>,
+            <code>2606:4700:4700::1111</code>,
             <code>https://github.com</code>,
             <code>https://example.com/login</code>
         </p>
@@ -148,14 +159,85 @@ if ($format === 'json') {
             <h2>Target</h2>
             <div class="grid">
                 <div class="item">
-                    <div class="label">Host</div>
+                    <div class="label">Host / IP</div>
                     <div class="value"><?= e($host) ?></div>
+                </div>
+                <div class="item">
+                    <div class="label">Target Type</div>
+                    <div class="value"><?= e($result['target_type'] ?? '-') ?></div>
                 </div>
                 <div class="item">
                     <div class="label">Resolved IPs</div>
                     <div class="value"><?= e(implode(', ', $result['ips'] ?? [])) ?></div>
                 </div>
+                <div class="item">
+                    <div class="label">Reverse DNS</div>
+                    <div class="value">
+                        <?php foreach (($result['reverse_dns'] ?? []) as $ip => $reverse): ?>
+                            <div><?= e($ip) ?>: <?= e($reverse ?? '-') ?></div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
             </div>
+        </div>
+
+        <div class="card">
+            <h2>IP Registration (RDAP)</h2>
+
+            <?php $registration = $result['ip_registration'] ?? null; ?>
+            <?php if (!$registration || !$registration['available']): ?>
+                <p class="warn"><?= e($registration['error'] ?? 'No registration data available') ?></p>
+            <?php else: ?>
+                <div class="grid">
+                    <div class="item">
+                        <div class="label">Network</div>
+                        <div class="value"><?= e($registration['name'] ?? '-') ?></div>
+                    </div>
+                    <div class="item">
+                        <div class="label">Handle</div>
+                        <div class="value"><?= e($registration['handle'] ?? '-') ?></div>
+                    </div>
+                    <div class="item">
+                        <div class="label">CIDR</div>
+                        <div class="value"><?= e(implode(', ', $registration['cidr'] ?? []) ?: '-') ?></div>
+                    </div>
+                    <div class="item">
+                        <div class="label">Address Range</div>
+                        <div class="value"><?= e($registration['start_address'] ?? '-') ?> – <?= e($registration['end_address'] ?? '-') ?></div>
+                    </div>
+                    <div class="item">
+                        <div class="label">Registrant</div>
+                        <div class="value"><?= e($registration['registrant'] ?? '-') ?></div>
+                    </div>
+                    <div class="item">
+                        <div class="label">Country</div>
+                        <div class="value"><?= e($registration['country'] ?? '-') ?></div>
+                    </div>
+                    <div class="item">
+                        <div class="label">ASN</div>
+                        <div class="value"><?= e($registration['asn'] ?? '-') ?></div>
+                    </div>
+                    <div class="item">
+                        <div class="label">Announced Prefix</div>
+                        <div class="value"><?= e($registration['announced_prefix'] ?? '-') ?></div>
+                    </div>
+                    <div class="item">
+                        <div class="label">Registry</div>
+                        <div class="value"><?= e(strtoupper($registration['registry'] ?? '-')) ?></div>
+                    </div>
+                    <div class="item">
+                        <div class="label">Abuse Contact</div>
+                        <div class="value">
+                            <?= e($registration['abuse_name'] ?? '-') ?><br>
+                            <?= e($registration['abuse_email'] ?? '-') ?>
+                        </div>
+                    </div>
+                    <div class="item">
+                        <div class="label">Registry WHOIS Server</div>
+                        <div class="value"><?= e($registration['port43'] ?? '-') ?></div>
+                    </div>
+                </div>
+            <?php endif; ?>
         </div>
 
         <div class="card">
