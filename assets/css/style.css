@@ -180,6 +180,10 @@ body {
 
 .menu-group.open .submenu { display: block; }
 .submenu a { font-size: .94rem; }
+.main-menu a > i, .main-menu .submenu-toggle i { width: 20px; flex: 0 0 20px; color: #adb5bd; text-align: center; }
+.main-menu .submenu-toggle > span:first-child { display: inline-flex; align-items: center; gap: 10px; }
+.main-menu .menu-separator { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.18); }
+.main-menu a { justify-content: flex-start; gap: 10px; }
 
 .container {
     width: min(920px, calc(100% - 32px));

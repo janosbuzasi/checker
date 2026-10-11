@@ -60,6 +60,7 @@ if ($format === 'json') {
 <title><?= e(APP_TITLE) ?> v<?= e(APP_VERSION) ?></title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" type="image/svg+xml" href="/favicon/favicon.svg">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
@@ -77,10 +78,10 @@ if ($format === 'json') {
     </div>
     <nav id="main-menu" class="main-menu" aria-label="Main navigation">
         <ul>
-            <li><a href="/">Home</a></li>
+            <li><a href="/"><i class="fas fa-home" aria-hidden="true"></i> Home</a></li>
             <li class="menu-group">
                 <button class="submenu-toggle" type="button" aria-expanded="false">
-                    <span>Tools</span><span class="submenu-chevron" aria-hidden="true"></span>
+                    <span><i class="fas fa-toolbox" aria-hidden="true"></i> Tools</span><span class="submenu-chevron" aria-hidden="true"></span>
                 </button>
                 <ul class="submenu">
                     <li><a href="/checker/">Website Checker</a></li>
@@ -89,12 +90,16 @@ if ($format === 'json') {
                     <li><a href="/swiss-business-checker/">Swiss Business Checker</a></li>
                     <li><a href="/cnc/">Mini CNC Studio</a></li>
                     <li><a href="/tracks/">Tracks</a></li>
+                    <li><a href="/notenpiano/">Notenpiano</a></li>
+                    <li><a href="/webtrash-acid-lab/">Webtrash ACID LAB</a></li>
                     <li><a href="/bitcoin-dashboard/">Bitcoin Dashboard</a></li>
                     <li><a href="/music/">JanYmed Music</a></li>
                 </ul>
             </li>
-            <li><a href="/about_us.php">About us</a></li>
-            <li><a href="/contact.php">Contact</a></li>
+            <li class="menu-separator"><a href="/about_us.php"><i class="fas fa-info-circle" aria-hidden="true"></i> Über uns</a></li>
+            <li><a href="/contact.php"><i class="fas fa-envelope" aria-hidden="true"></i> Kontakt</a></li>
+            <li><a href="/change_style.php"><i class="fas fa-palette" aria-hidden="true"></i> Darstellung</a></li>
+            <li><a href="/admin/login.php"><i class="fas fa-sign-in-alt" aria-hidden="true"></i> Anmelden</a></li>
         </ul>
     </nav>
 </header>
